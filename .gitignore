@@ -1,0 +1,9 @@
+node_modules/
+logs
+*.log
+/dist
+.venv/
+.idea/
+test_images/
+*.sw*
+
