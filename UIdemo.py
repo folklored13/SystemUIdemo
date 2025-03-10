@@ -15,12 +15,32 @@ class FlowerClassificationApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowIcon(QIcon('icon.ico'))
+
+        # 先初始化模型 预定义模型信息
+        self.models = {
+            "ResNet-50": {
+                "desc": "深度残差网络\nTop-1 准确率: 76.3%\n参数量: 25.6M",
+                "confidence_factor": 0.8
+            },
+            "EfficientNet-B4": {
+                "desc": "高效卷积网络\nTop-1 准确率: 82.9%\n参数量: 19.3M",
+                "confidence_factor": 0.9
+            },
+            "Vision Transformer": {
+                "desc": "视觉Transformer\nTop-1 准确率: 81.8%\n参数量: 86.6M",
+                "confidence_factor": 0.85
+            }
+        }
+        self.current_model = "ResNet-50"
+
+        # 执行UI初始化
         self.initUI()
         self.camera = None
         self.timer = QTimer()
-        self.current_pixmap=None
+        self.current_pixmap = None
         # 类别标签（示例，需替换实际类别）
         self.classes = ['玫瑰', '郁金香', '向日葵', '雏菊', '兰花']
+
 
     # def load_model(self):
     #     # 加载训练好的PyTorch模型
@@ -49,37 +69,75 @@ class FlowerClassificationApp(QMainWindow):
 
     def create_left_panel(self):
         panel = QFrame()
-        panel.setMinimumWidth(400)
+        panel.setMinimumWidth(420)
         vbox = QVBoxLayout()
 
+        # 新增模型选择组件
+        model_label = QLabel("选择模型:")
+        model_label.setStyleSheet("font-size: 16px; color: #666; margin-bottom: 8px;")
+
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(self.models.keys())
+        self.model_combo.currentTextChanged.connect(self.update_model_info)
+        self.model_combo.setFixedHeight(40)  # 固定高度
+        self.model_combo.setStyleSheet("""
+                QComboBox {
+                    padding: 8px;
+                    font-size: 16px;
+                    border: 2px solid #4CAF50;
+                    border-radius: 6px;
+                    background: white;
+                }
+                QComboBox::drop-down {
+                    subcontrol-origin: padding;
+                    subcontrol-position: right center;
+                    width: 30px;
+                }
+            """)
         # 图像显示
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setStyleSheet("background: #2E2E2E; border-radius: 10px;")
         self.image_label.setMinimumSize(380, 380)
 
-        # 控制按钮
+        # 按钮容器
+        btn_container = QHBoxLayout()
         btn_upload = QPushButton("上传图片")
         btn_upload.clicked.connect(self.open_image)
         btn_upload.setCursor(Qt.PointingHandCursor)
-
         btn_camera = QPushButton("启动摄像头")
         btn_camera.clicked.connect(self.toggle_camera)
         btn_camera.setCursor(Qt.PointingHandCursor)
-
-        # 按钮容器
-        btn_container = QHBoxLayout()
         btn_container.addWidget(btn_upload)
         btn_container.addWidget(btn_camera)
 
+        # 按顺序添加组件到布局
+        vbox.addWidget(model_label)
+        vbox.addWidget(self.model_combo)
+        vbox.addSpacing(20)
         vbox.addWidget(self.image_label)
         vbox.addLayout(btn_container)
+        vbox.addStretch(1)  # 添加伸缩空间
+
         panel.setLayout(vbox)
         return panel
 
     def create_right_panel(self):
         panel = QFrame()
         vbox = QVBoxLayout()
+
+        # 新增模型信息展示
+        self.model_info = QLabel(self.models[self.current_model]["desc"]) # 初始化文本
+        self.model_info.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.model_info.setStyleSheet("""
+            font-size:14px;
+            color:#444;
+            padding:15px;
+            background:#F8F8F8;
+            border-radius:10px;
+            line-height:1.5;
+            """)
+        self.model_info.setMinimumHeight(120)
 
         # 结果标题
         title = QLabel("分类结果")
@@ -94,8 +152,9 @@ class FlowerClassificationApp(QMainWindow):
         self.result_table.verticalHeader().setVisible(False)
         self.result_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
+        vbox.addWidget(self.model_info)
         vbox.addWidget(title)
-        vbox.addWidget(self.result_table)
+        vbox.addWidget(self.result_table,1) # 添加伸缩因子
         panel.setLayout(vbox)
         return panel
 
@@ -214,34 +273,44 @@ class FlowerClassificationApp(QMainWindow):
                 except Exception as e:
                     print(f"摄像头帧处理错误: {str(e)}")
 
-    def generate_demo_results(self):
-        """生成模拟分类结果"""
-        # 创建随机概率数据
-        fake_probs = [random.random() for _ in range(5)]
-        total = sum(fake_probs)
-        probabilities = [p / total for p in fake_probs]
-        sorted_probs = sorted(probabilities, reverse=True)
+    def update_model_info(self, model_name):
+        self.current_model = model_name
+        self.model_info.setText(self.models[model_name]["desc"])
+        if self.image_label.pixmap():
+            self.generate_demo_results()
 
-        # 显示结果
+    def generate_demo_results(self):
+        """生成基于选定模型的模拟结果"""
+        cf = self.models[self.current_model]["confidence_factor"]
+        base_probs = [cf * 0.8**i + random.uniform(0, 0.1) for i in range(5)]
+        total = sum(base_probs)
+        probabilities = [p / total for p in base_probs]
+        sorted_probs = sorted(probabilities, reverse=True)
         self.show_results(sorted_probs)
 
     def show_results(self, probabilities):
-        """更新结果表格（演示版）"""
+        """更新结果表格（增强模拟效果）"""
         self.result_table.setRowCount(5)
+        sorted_classes = sorted(zip(self.classes, probabilities),
+                              key=lambda x: x[1], reverse=True)
 
         for row in range(5):
-            # 随机选择类别
-            class_name = QTableWidgetItem(random.choice(self.classes))
-            # 生成格式化百分比
-            confidence = QTableWidgetItem(f"{probabilities[row] * 100:.2f}%")
+            class_name, prob = sorted_classes[row]
+            class_item = QTableWidgetItem(class_name)
+            confidence = QTableWidgetItem(f"{prob * 100:.2f}%")
 
-            # 设置颜色渐变效果
-            color_value = int(255 * (1 - probabilities[row]))
-            confidence.setForeground(QColor(color_value, 200, color_value))
+            # 根据置信度设置颜色
+            hue = 120 * prob  # 颜色从红(0)到绿(1)
+            confidence.setForeground(QColor.fromHsv(int(hue), 150, 200))
 
-            self.result_table.setItem(row, 0, class_name)
+            # 设置加粗效果
+            font = QFont()
+            font.setBold(True) if row == 0 else font.setBold(False)
+            class_item.setFont(font)
+            confidence.setFont(font)
+
+            self.result_table.setItem(row, 0, class_item)
             self.result_table.setItem(row, 1, confidence)
-
 
 
 if __name__ == '__main__':
